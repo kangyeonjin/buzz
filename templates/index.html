@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>버즈 질문하기</title>
+    <link rel="stylesheet" href="styles.css"> <!-- 외부 CSS 파일 연결 -->
+</head>
+<body>
+    <div class="container">
+        <h1>버즈에게 질문하기</h1>
+        <input type="text" id="question" placeholder="질문을 입력하세요">
+        <button onclick="askQuestion()">질문하기</button>
+        <p id="response"></p>
+    </div>
+
+    <script>
+        async function askQuestion() {
+            const question = document.getElementById("question").value;
+            const responseElement = document.getElementById("response");
+            const apiUrl = `http://localhost:8000/buzz_conversation/?question=${encodeURIComponent(question)}`;
+            
+            const response = await fetch(apiUrl);
+            const data = await response.json();
+            responseElement.textContent = data.response;
+        }
+    </script>
+</body>
+</html>

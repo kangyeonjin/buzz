@@ -1,7 +1,19 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
+import asyncio
+
+app = FastAPI()
+
+# 정적 파일 경로 설정 (css, js, 이미지 등)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# 템플릿 설정 (템플릿 폴더 경로)
+templates = Jinja2Templates(directory="templates")
 
 # 프롬프트 템플릿 작성
 template = """
@@ -48,16 +60,23 @@ output_parser = StrOutputParser()
 def create_chain():
     return prompt | model | output_parser
 
-app = FastAPI()
 
-@app.get("/")
-def read_root():
-    chain = create_chain()  # 체인 초기화
-    response = chain.invoke({"question": "버즈야 넌 오늘 어떤 하루를 보냈니?"})
-    return {"conversation": response if isinstance(response, str) else response.get('text')}
+@app.get("/", response_class=HTMLResponse)
+async def read_root(request: Request):
+    # index.html 템플릿을 렌더링하여 반환
+    return templates.TemplateResponse("index.html", {"request": request})
+
+# @app.get("/",)
+# def read_root():
+#     chain = create_chain()  # 체인 초기화
+#     response = chain.invoke({"question": "버즈야 넌 오늘 어떤 하루를 보냈니?"})
+#     return {"conversation": response if isinstance(response, str) else response.get('text')}
 
 @app.get("/buzz_conversation/")
 async def get_buzz_response(question: str):
     chain = create_chain()  # 체인 초기화
-    response = chain.invoke({"question": question})
+    
+    #비동기적으로 처리(기존코드가 동기적이라 성능저하 있을수있어서 해볼려고함)
+    response = await asyncio.to_thread(chain.invoke, {"question": question})
+    # response = chain.invoke({"question": question})
     return {"response": response if isinstance(response, str) else response.get('text')}

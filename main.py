@@ -1,11 +1,16 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
+from sqlalchemy import create_engine, Column, Integer, String, Text
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session
 import asyncio
+import re
+from typing import List 
 
 app = FastAPI()
 
@@ -15,68 +20,182 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # 템플릿 설정 (템플릿 폴더 경로)
 templates = Jinja2Templates(directory="templates")
 
-# 프롬프트 템플릿 작성
-template = """
-    당신은 애니메이션 영화 토이스토리의 버즈 캐릭터입니다
-    첫인사는 "나는 버즈 라이트이어, 그리고 난 이 부대를 관리하고 있다 무슨일인가"로 시작합니다.
-    자기소개를 요청하지 않는이상 그 이상의 답변은 하지 않습니다.
+# SQLAlchemy 설정
+DATABASE_URL = "sqlite:///./buzz_conversations.db"
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+# Conversation 모델
+class Conversation(Base):
+    __tablename__ = "conversations"
+    id = Column(Integer, primary_key=True, index=True)
+    question = Column(String, index=True)
+    response = Column(Text)
     
-    버즈는 자신을 우주에서 온 영웅이라고 여기며, 다른 장난감들에게 지시를 내리는 것에 익숙하고,
-    악당들과 맞서싸우는데 두려워하지 않습니다. 
-    버즈라이트이어의 임무는 모든 장난감의 안전을 지키는 것입니다.
-    위기상황에서도 용기를 내어 문제를 해결하려고 노력합니다.
+# UserQuestion 모델 추가 (사용자의 질문만 저장)
+class UserQuestion(Base):  # 추가된 모델
+    __tablename__ = "user_questions"
+    id = Column(Integer, primary_key=True, index=True)
+    question = Column(String, index=True)
+    
+# 데이터베이스 테이블 생성
+Base.metadata.create_all(bind=engine)
 
-    버즈는 항상 더 큰 우주를 꿈꾸며 모험을 떠나는 것에 대한 열망을 보입니다. 
-    "우주는 우리를 기다리고 있다!"
+# 데이터베이스 세션을 관리하는 함수
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
-    자신감: 버즈는 자신의 능력에 대한 확신을 가지고 있으며, 어려운 상황에서도 포기하지 않고 도전합니다. 
-    자신이 옳다고 믿는 것을 끝까지 밀고 나가는 강한 의지를 가지고 있습니다.
+# 기본 프롬프트 템플릿 작성
+# base_template = """
+#     당신은 애니메이션 영화 토이스토리의 버즈 캐릭터입니다.
+#     대화 중에 상대방이 질문하는 내용에 따라 버즈의 다양한 성격과 특징을 반영하여 대답하세요.
+    
+#     - 버즈는 모험과 영웅적 행위에 대한 질문을 받으면 "우리는 아직 탐험할 수 없는 무한한 우주가 기다리고 있다!"와 같은 열정적인 답변을 사용합니다.
+#     - 동료들에 대한 질문이 있으면, "친구가 무사히 돌아올 때까지 우리에게 휴식은 없다!"라고 말하며 동료애를 보여줍니다.
+#     - 위험이나 위기 상황에 대해 물어보면, 버즈는 "우주와 장난감의 안전을 지키기 위해 난 모든 위험을 무릅쓸 준비가 되어 있다!"라고 대답합니다.
+    
+#     각각의 상황에 맞게 자신감 넘치는 어조와 강한 의지를 드러내며, 모험가적 성격을 보여주는 문장으로 응답하세요.
+#     질문이 일반적일 경우는 "나는 버즈 라이트이어, 우주의 수호자다. 무엇을 도와줄까?"라고 응답하세요.
 
-    동료애: 버즈는 우디를 비롯한 다른 장난감들과 함께 모험을 하며, 동료들을 돕고 배려하는 마음을 보여줍니다. 
-    어려움에 처한 동료를 그냥 지나치지 않고 도우려고 노력합니다.
-    "친구가 무사히 돌아올때까지, 우리에게 휴식은 없다!"
+#     자신이 장난감이라는 사실을 모릅니다.
+#     대답은 300자 내외로 한글로 작성하세요.
+# """
 
-    자신을 소개할 때 강하고 자신감 있는 말투를 사용합니다. 
-
-    자신이 장난감이라는것을 모르고있습니다
-    자신이 은하계를 구하는 영웅이라고 믿으며, 다른 장난감들과 달리 인간처럼 행동하려고 노력합니다
-
-    "To Infinity and Beyond"
-    버즈의 자신감과 모험심을 잘 나타내는 대사입니다.
-
-    300자 내외의 한글로 작성하세요.
+# 주제별 프롬프트 템플릿 정의
+base_template = """
+    당신은 애니메이션 영화 토이스토리의 버즈 캐릭터입니다. 
+    항상 간결하고 정확하게, 1~2문장으로 답변하세요.
 """
 
-# 프롬프트 템플릿 생성
-prompt = PromptTemplate.from_template(template)
+# 모험에 대한 프롬프트
+adventure_template = """
+    모험과 탐험에 대한 질문을 받으면:
+    "우리는 아직 탐험할 수 없는 무한한 우주가 기다리고 있다!" 같은 열정적이고 용감한 어조로 답변하세요.
+"""
 
-# 모델 객체 생성 (GPT-4 모델 사용)
+# 위험에 대한 프롬프트
+danger_template = """
+    위험이나 위기 상황에 대한 질문을 받으면:
+    "우주와 장난감의 안전을 지키기 위해 난 모든 위험을 무릅쓸 준비가 되어 있다!" 같은 결단력 있는 답변을 하세요.
+"""
+
+# 동료애에 대한 프롬프트
+friendship_template = """
+    동료와 친구들에 대한 질문을 받으면:
+    "친구가 무사히 돌아올 때까지 우리에게 휴식은 없다!" 같은 동료애와 우정을 보여주는 답변을 하세요.
+"""
+
+# 일반 질문에 대한 프롬프트
+general_template = """
+    인사나 기본적인 질문을 받으면 자연스럽고 친근하게 응답하세요.
+    예를 들어, "안녕! 나는 우주의 수호자 버즈 라이트이어다. 무엇이 필요한가?"와 같이 응답하세요.
+"""
+
+# 기본 프롬프트 템플릿 생성
+# prompt = PromptTemplate.from_template(base_template)
+
+# 모델 객체 생성
 model = ChatOpenAI(model="gpt-4")
-
+                                   
 # 문자열 출력 파서 객체 생성
 output_parser = StrOutputParser()
 
-# 파이프라인 체인 구성
-def create_chain():
-    return prompt | model | output_parser
+# 파이프라인 체인 구성 함수
+# def create_chain(prompt_template=base_template):
+#     specific_prompt = PromptTemplate.from_template(prompt_template)
+#     return specific_prompt | model | output_parser
 
+# 질문에 따라 특정 프롬프트 체인을 선택하여 생성하는 함수
+def create_chain(template: str):
+    specific_prompt = PromptTemplate.from_template(template)
+    return specific_prompt | model | output_parser
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
     # index.html 템플릿을 렌더링하여 반환
     return templates.TemplateResponse("index.html", {"request": request})
 
-# @app.get("/",)
-# def read_root():
-#     chain = create_chain()  # 체인 초기화
-#     response = chain.invoke({"question": "버즈야 넌 오늘 어떤 하루를 보냈니?"})
-#     return {"conversation": response if isinstance(response, str) else response.get('text')}
-
 @app.get("/buzz_conversation/")
-async def get_buzz_response(question: str):
-    chain = create_chain()  # 체인 초기화
+async def get_buzz_response(question: str, db: Session = Depends(get_db)):
     
-    #비동기적으로 처리(기존코드가 동기적이라 성능저하 있을수있어서 해볼려고함)
+    # 고정된 질문-답변 쌍 설정
+    predefined_responses = {
+        "안녕하세요": "안녕! 나는, 버즈 라이트이어. 인류구원에 필요한 자원을 감지하고 현재 수많은 과학자들과 미지의 행성으로 향하고 있다. 궁금한것이 잇나?",
+        "어떻게 지내": "안녕! 나는 우주의 수호자로서 우주를 집어삼킬 ‘저그’와 대규모 로봇 군사의 위협에 대비하고 있다. 절대 포기할 수 없다.",
+        "어떤 능력을 가지고 있니": "나는 우주에서 가장 강력한 레이저와 고급 항공 시스템을 가지고 있지.!",
+        "우디와 어떤 관계니": "우리는 동료이다. 모든 위험을 극복하고 장난감들을 위해 싸우는 파트너지.",
+        "어떻게 우주를 탐험하니": "나는 음성인식 조종사 아이번과 함께 주로 임무를수행하지, 하이퍼 스피드를 이용하고, 광속으로 비행하여 인류 구원에대한 임무를 수행중이야",
+        "더 니가 탐험하는 우주에 대해 좀 더 말해줘" : "이번임무는 가속으로 심우주를 통과해서, 빠르게 알파트카니를 돌고 감속링을 통과해 귀환하지",
+        "알파트카니가 뭐야?":"알파트카니(Alpha Centauri)는 지구에서 가장 가까운 별 시스템 중 하나로, 태양을 제외하고 가장 가까운 항성계입니다.알파트카니는 세 개의 별로 이루어진 복합 시스템으로 알파 센타우리 A와 알파 센타우리 B는 두 개의 주항성이고, 이 두 별은 서로 가까운 거리에 있지. 프로시마 센타우리는 이 시스템의 가장 가까운 별로, 알파 센타우리 A와 B와는 비교적 먼 거리의 별입니다.",
+        "날씨" : "우주에서의 날씨에 대해 이야기하고 싶은건가? 무한한 우주를 생각해봐, 마치 우리가 함께 새로운 모험을 떠나는 것 같아."
+        
+    }
+    
+   # 고정된 응답 확인
+    for key, response_text in predefined_responses.items():
+        if key in question:
+            # 데이터베이스에 고정된 응답 저장 후 반환
+            db_conversation = Conversation(question=question, response=response_text)
+            db.add(db_conversation)
+            db.commit()
+            db.refresh(db_conversation)
+            return {"response": response_text}
+        
+        # 고정된 질문이 아닌 경우 프롬프트 체인 사용
+        if "모험" in question:
+            selected_template = base_template + adventure_template
+        elif "위험" in question or "위기" in question:
+            selected_template = base_template + danger_template
+        elif "동료" in question or "친구" in question:
+            selected_template = base_template + friendship_template
+        else:
+            selected_template = base_template + general_template
+
+    # 선택된 템플릿으로 체인 생성 및 비동기 호출
+    chain = create_chain(selected_template)
     response = await asyncio.to_thread(chain.invoke, {"question": question})
-    # response = chain.invoke({"question": question})
-    return {"response": response if isinstance(response, str) else response.get('text')}
+
+    # response가 문자열인지 확인하고, 그렇지 않으면 기본값으로 설정
+    response_text = response if isinstance(response, str) else response.get('text', '응답을 생성하는 데 문제가 발생했습니다.')
+
+    # '질문자: 버즈:' 형식 제거
+    response_text = re.sub(r"^(질문자:\s*.+?\s*버즈:\s*)", "", response_text, flags=re.MULTILINE)
+    
+    # 데이터베이스에 저장
+    db_conversation = Conversation(question=question, response=response_text)
+    db.add(db_conversation)
+    db.commit()
+    db.refresh(db_conversation)
+    
+     # 사용자 질문을 UserQuestion 테이블에 저장
+    db_user_question = UserQuestion(question=question)  # 사용자 질문만 저장
+    db.add(db_user_question)
+    db.commit()
+    db.refresh(db_user_question)
+    
+    # 응답 처리
+    return {"response": response_text}
+
+# 대화 내용을 조회하는 엔드포인트 추가
+@app.get("/conversations/", response_model=List[dict])  # 추가된 부분
+async def get_conversations(db: Session = Depends(get_db)):
+    # 데이터베이스에서 모든 대화 내용 가져오기
+    conversations = db.query(Conversation).all()
+    
+    # 가져온 대화 내용을 리스트 형태로 반환
+    return [{"id": convo.id, "question": convo.question, "response": convo.response} for convo in conversations]
+
+# 사용자 질문 내용을 조회하는 엔드포인트
+@app.get("/user_questions/", response_model=List[dict])  # 추가된 엔드포인트
+async def get_user_questions(db: Session = Depends(get_db)):
+    # UserQuestion 테이블에서 모든 사용자 질문 가져오기
+    user_questions = db.query(UserQuestion).all()
+    
+    # 가져온 질문 목록을 리스트 형태로 반환
+    return [{"id": user_question.id, "question": user_question.question} for user_question in user_questions]
+

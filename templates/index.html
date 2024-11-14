@@ -12,6 +12,8 @@
         <input type="text" id="question" placeholder="질문을 입력하세요">
         <button onclick="askQuestion()">질문하기</button>
         <p id="response"></p>
+
+        <button onclick="window.location.href='/conversations'">저장된 대화 보기</button>
     </div>
 
     <script>
@@ -24,6 +26,7 @@
             const data = await response.json();
             responseElement.textContent = data.response;
         }
+        
     </script>
 </body>
 </html>

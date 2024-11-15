@@ -1,47 +1,124 @@
-/* styles.css */
-body {
-    font-family: 'Arial', sans-serif;
+/* static/css/styles.css */
+/* body {
+    font-family: Arial, sans-serif;
+    background-color: #0d0d0e;
     display: flex;
     justify-content: center;
     align-items: center;
     height: 100vh;
-    background-color: #a5a5f5;
     margin: 0;
+} */
+
+body {
+    font-family: Arial, sans-serif;
+    background-color: #0d0d0e;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+    overflow: hidden;  /* 화면 밖으로 별들이 나가지 않도록 설정 */
+    position: relative;
 }
+
+/* 별을 생성하는 스타일 */
+.star {
+    position: absolute;
+    border-radius: 50%;
+    background-color: white;
+    animation: twinkle 1.5s infinite;
+}
+
+/* 별의 크기와 애니메이션 설정 */
+.star:nth-child(odd) {
+    width: 2px;
+    height: 2px;
+    animation-duration: 1s;
+}
+.star:nth-child(even) {
+    width: 3px;
+    height: 3px;
+    animation-duration: 1.5s;
+}
+
+/* 별들이 랜덤하게 나타나도록 설정 */
+@keyframes twinkle {
+    0% { opacity: 0.5; }
+    50% { opacity: 1; }
+    100% { opacity: 0.5; }
+}
+
+/* 별이 랜덤 위치에 나타나도록 생성하는 효과 */
+@keyframes moveStars {
+    0% { top: 0; left: 0; }
+    100% { top: 100%; left: 100%; }
+}
+
 
 .container {
-    text-align: center;
+    background-color: white;
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    width: 400px;
     padding: 20px;
-    background: white;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    border-radius: 8px;
+    text-align: center;
 }
 
-#question {
-    width: 80%;
-    padding: 12px;
-    margin: 10px 0;
-    border-radius: 4px;
-    border: 1px solid #ccc;
-    font-size: 16px;
+.chat-box {
+    max-height: 300px;
+    overflow-y: auto;
+    background-color: #f9f9f9;
+    border: 1px solid #ddd;
+    padding: 10px;
+    margin-bottom: 10px;
+    border-radius: 5px;
+    display: flex;
+    flex-direction: column;
+}
+
+input[type="text"] {
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    margin-right: 10px;
+    width: 70%;
 }
 
 button {
     padding: 10px 15px;
-    font-size: 16px;
-    cursor: pointer;
-    border: none;
-    background-color: #6aa0f0;
+    background-color: #82bbf0;
     color: white;
-    border-radius: 4px;
-    transition: background-color 0.3s ease;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
 }
 
 button:hover {
-    background-color: #7f51fd;
+    background-color: #7b8be7;
 }
 
-p {
-    font-size: 18px;
-    color: #333;
+/* 사용자 메시지 스타일 (오른쪽 정렬) */
+.user-message {
+    text-align: right;  /* 사용자 메시지를 오른쪽 정렬 */
+    color: #2c3e50;
+    background-color: #e1f5fe;
+    border-radius: 8px;
+    padding: 10px;
+    margin: 5px 0;
+    align-self: flex-end;  /* 오른쪽으로 정렬 */
+    max-width: 70%;
+    word-wrap: break-word;
+}
+
+/* 버즈 메시지 스타일 (왼쪽 정렬) */
+.buzz-message {
+    text-align: left;  /* 버즈 메시지를 왼쪽 정렬 */
+    color: #0f0f0f;
+    background-color: #ceecab;
+    border-radius: 8px;
+    padding: 10px;
+    margin: 5px 0;
+    align-self: flex-start;  /* 왼쪽으로 정렬 */
+    max-width: 70%;
+    word-wrap: break-word;
 }

@@ -3,30 +3,72 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>버즈 질문하기</title>
+    <title>버즈에게 질문하기</title>
     <link rel="stylesheet" href="/static/css/styles.css"> 
 </head>
 <body>
     <div class="container">
         <h1>버즈에게 질문하기</h1>
-        <input type="text" id="question" placeholder="질문을 입력하세요">
+        <div class="chat-box" id="chat-box">
+            <!-- 대화 내용이 여기에 표시됩니다 -->
+        </div>
+        <input type="text" id="question" placeholder="질문을 입력하세요" />
         <button onclick="askQuestion()">질문하기</button>
-        <p id="response"></p>
-
+        
         <button onclick="window.location.href='/conversations'">저장된 대화 보기</button>
     </div>
 
+    <div id="starField"></div>
+
     <script>
+        const starField = document.getElementById('starField');
+      
+        // 별을 100개 생성
+        for (let i = 0; i < 100; i++) {
+            const star = document.createElement('div');
+            star.classList.add('star');
+            // 별의 위치를 랜덤으로 설정
+            star.style.top = `${Math.random() * 100}vh`;
+            star.style.left = `${Math.random() * 100}vw`;
+            // 별을 starField에 추가
+            starField.appendChild(star);
+        }
+      </script>
+
+    <script>
+        // 질문하기 함수
         async function askQuestion() {
             const question = document.getElementById("question").value;
-            const responseElement = document.getElementById("response");
+            if (question.trim() === "") return;
+
+            const chatBox = document.getElementById("chat-box");
+
+            // 사용자 질문을 채팅창에 추가
+            appendMessage("사용자", question);
+
+            // API 요청
             const apiUrl = `http://localhost:8000/buzz_conversation/?question=${encodeURIComponent(question)}`;
-            
             const response = await fetch(apiUrl);
             const data = await response.json();
-            responseElement.textContent = data.response;
+
+            // 버즈의 응답을 채팅창에 추가
+            appendMessage("버즈", data.response);
+
+            // 입력 필드 초기화
+            document.getElementById("question").value = "";
         }
-        
+
+        // 메시지를 채팅창에 추가하는 함수
+        function appendMessage(sender, message) {
+            const chatBox = document.getElementById("chat-box");
+
+            const messageElement = document.createElement("div");
+            messageElement.classList.add(sender === "사용자" ? "user-message" : "buzz-message");
+            messageElement.textContent = `${message}`;
+            
+            chatBox.appendChild(messageElement);
+            chatBox.scrollTop = chatBox.scrollHeight; // 새로운 메시지가 추가될 때 스크롤을 맨 아래로
+        }
     </script>
 </body>
 </html>

@@ -9,7 +9,7 @@ from sqlalchemy import create_engine, Column, Integer, String, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 import asyncio
-from pinecone import Pinecone
+from pinecone import Pinecone, ServerlessSpec
 import pinecone
 import re
 from typing import List 
@@ -29,30 +29,25 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 # Pinecone API 초기화
-pc = pinecone(
-        api_key=os.environ.get("PINECONE_API_KEY")
-    )
-
-pinecone.init(api_key=os.getenv("PINECONE_API_KEY"), 
-environment=os.getenv("PINECONE_ENV"))
+pc = pinecone.init(api_key=os.getenv("PINECONE_API_KEY"))
 
 # 인덱스 이름 설정
 index_name = "buzz-conversations"
 
-# Pinecone 인덱스가 존재하지 않으면 생성
-if 'my_index' not in pc.list_indexes().names():
-        pc.create_index(
-            name='my_index',
-            dimension=1536,
-            metric='euclidean',
-            # spec=ServerlessSpec(
-            #     cloud='aws',
-            #     region='us-west-2'
-            # )
-        )
+# 인덱스가 존재하지 않으면 생성
+if index_name not in pinecone.list_indexes(): 
+    pinecone.create_index(
+        name=index_name,
+        dimension=1536,
+        metric='euclidean',
+    #       spec=ServerlessSpec( 
+    #         cloud='aws',
+    #         region='us-west-2'
+    #     )
+    )
 
 # Pinecone 인덱스 로드
-index = pinecone.Index(index_name)
+index = pc.Index(index_name)
 
 # SQLAlchemy 설정
 DATABASE_URL = "sqlite:///./buzz_conversations.db"
@@ -87,6 +82,7 @@ def get_db():
 # 기본 프롬프트 템플릿 작성
 base_template = """
     당신은 애니메이션 영화 토이스토리의 버즈 캐릭터입니다. 
+    
     항상 간결하고 정확하게, 1~2문장으로 답변하세요.
 """
 
